@@ -1,0 +1,14 @@
+services:
+  bot:
+    build: .
+    container_name: wa-auto-reply-bot
+    restart: unless-stopped
+    ports:
+      # Dashboard is private: reach it through an SSH tunnel, not the internet.
+      - "127.0.0.1:3000:3000"
+    environment:
+      # Set these in a .env file on the server. Never commit the .env file.
+      DASHBOARD_USER: ${DASHBOARD_USER}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+    volumes:
+      - ./data:/data

@@ -1,0 +1,9 @@
+node_modules
+.wwebjs_auth
+.wwebjs_cache
+uploads
+settings.json
+data
+.env
+.git
+npm-debug.log

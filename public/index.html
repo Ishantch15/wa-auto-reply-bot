@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>WhatsApp Auto-Reply Bot</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --card:     #21253a;
+    --border:   #2e3350;
+    --accent:   #25d366;
+    --accent2:  #128c7e;
+    --warn:     #f59e0b;
+    --danger:   #ef4444;
+    --text:     #e8eaf6;
+    --sub:      #8892b0;
+    --radius:   14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px 48px;
+  }
+
+  /* ── Header ── */
+  header {
+    max-width: 960px;
+    margin: 0 auto 28px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  header .logo {
+    width: 44px; height: 44px;
+    background: var(--accent);
+    border-radius: 12px;
+    display: grid; place-items: center;
+    font-size: 22px;
+  }
+  header h1 { font-size: 1.4rem; font-weight: 700; }
+  header p  { font-size: .8rem; color: var(--sub); }
+
+  /* ── Status pill ── */
+  #status-pill {
+    margin-left: auto;
+    padding: 6px 16px;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    transition: background .3s, color .3s;
+  }
+  #status-pill.disconnected { background:#1e1e2e; color:var(--sub); }
+  #status-pill.qr           { background:#2d2000; color:var(--warn); }
+  #status-pill.authenticated{ background:#0d2b1f; color:var(--accent); }
+  #status-pill.connected    { background:#0d2b1f; color:var(--accent); }
+  #status-pill.error        { background:#2b0d0d; color:var(--danger); }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  #status-pill.connected .dot,
+  #status-pill.authenticated .dot { animation: none; opacity:1; }
+
+  /* ── Grid layout ── */
+  .grid {
+    max-width: 960px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media(max-width:640px){ .grid{ grid-template-columns:1fr; } }
+
+  /* ── Card ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px;
+  }
+  .card-title {
+    font-size: .75rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--sub);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title span { font-size: 16px; }
+
+  /* ── QR Section ── */
+  #qr-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    min-height: 220px;
+    justify-content: center;
+    text-align: center;
+  }
+  #qr-img { width: 180px; height: 180px; border-radius: 10px; }
+  #qr-msg { color: var(--sub); font-size: .85rem; line-height:1.5; }
+  #qr-msg strong { color: var(--text); display: block; margin-bottom: 4px; }
+
+  /* ── Stats row ── */
+  .stats {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+  }
+  .stat-num  { font-size: 1.6rem; font-weight: 700; color: var(--accent); }
+  .stat-num.warn { color: var(--warn); }
+  .stat-num.danger{ color: var(--danger); }
+  .stat-lbl  { font-size: .7rem; color: var(--sub); text-transform: uppercase; letter-spacing:.07em; margin-top:2px; }
+
+  /* ── Textarea ── */
+  textarea {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    padding: 12px 14px;
+    font-size: .9rem;
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 100px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  textarea:focus { border-color: var(--accent); }
+
+  /* ── Buttons ── */
+  .btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .2s, transform .1s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-green  { background: var(--accent);  color: #000; }
+  .btn-gray   { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: var(--danger);  color: #fff; }
+  .btn-sm     { padding: 6px 12px; font-size: .78rem; }
+
+  /* ── PDF upload zones ── */
+  .pdf-slots { display: flex; flex-direction: column; gap: 12px; }
+  .pdf-slot {
+    background: var(--surface);
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: border-color .2s;
+    cursor: pointer;
+    position: relative;
+  }
+  .pdf-slot:hover      { border-color: var(--accent2); }
+  .pdf-slot.has-file   { border-style: solid; border-color: var(--accent); }
+  .pdf-slot input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%;
+  }
+  .pdf-icon { font-size: 28px; flex-shrink: 0; }
+  .pdf-label { font-size: .85rem; }
+  .pdf-label strong { display: block; color: var(--text); }
+  .pdf-label small   { color: var(--sub); }
+  .pdf-del {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px;
+    z-index: 2;
+    position: relative;
+  }
+
+  /* ── Log table ── */
+  .log-wrap { overflow: auto; max-height: 300px; }
+  .log-wrap::-webkit-scrollbar { width: 6px; }
+  .log-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  th {
+    position: sticky; top: 0;
+    background: var(--card);
+    padding: 8px 10px;
+    text-align: left;
+    color: var(--sub);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: .72rem;
+    font-weight: 600;
+  }
+  .badge-ok   { background: #0d2b1f; color: var(--accent); }
+  .badge-fail { background: #2b0d0d; color: var(--danger); }
+  .badge-wait { background: #2b2000; color: var(--warn);   }
+
+  #empty-log {
+    text-align: center;
+    padding: 40px;
+    color: var(--sub);
+    font-size: .85rem;
+  }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: .85rem;
+    max-width: 280px;
+    box-shadow: 0 8px 32px #0008;
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity .3s, transform .3s;
+    pointer-events: none;
+    z-index: 999;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.ok   { border-color: var(--accent); color: var(--accent); }
+  #toast.err  { border-color: var(--danger); color: var(--danger); }
+
+  /* ── Util ── */
+  .row  { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+  .full { grid-column: 1 / -1; }
+  .sub  { color: var(--sub); font-size: .8rem; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">💬</div>
+  <div>
+    <h1>WhatsApp Auto-Reply Bot</h1>
+    <p>Automatic text + PDF sender</p>
+  </div>
+  <div id="status-pill" class="disconnected">
+    <div class="dot"></div>
+    <span id="status-txt">Disconnected</span>
+  </div>
+</header>
+
+<!-- ── Main Grid ── -->
+<div class="grid">
+
+  <!-- QR / Connection Card -->
+  <div class="card">
+    <div class="card-title"><span>📱</span> WhatsApp Connection</div>
+    <div id="qr-wrap">
+      <img id="qr-img" src="" alt="" style="display:none"/>
+      <div id="qr-msg">
+        <strong>Starting bot…</strong>
+        Please wait while WhatsApp initialises.
+      </div>
+    </div>
+    <div class="row" id="logout-row" style="display:none">
+      <button class="btn btn-danger btn-sm" onclick="logout()">🔌 Logout &amp; Scan New QR</button>
+    </div>
+  </div>
+
+  <!-- Reply Text Card -->
+  <div class="card">
+    <div class="card-title"><span>✏️</span> Auto-Reply Message</div>
+    <textarea id="reply-text" rows="4" placeholder="Enter your auto-reply message…"></textarea>
+    <p class="sub">This text is sent first, then your PDFs.</p>
+    <div class="row">
+      <button class="btn btn-green" onclick="saveText()">💾 Save Message</button>
+    </div>
+  </div>
+
+  <!-- PDF Upload Card -->
+  <div class="card">
+    <div class="card-title"><span>📎</span> PDF Attachments</div>
+    <div class="pdf-slots">
+
+      <!-- PDF 1 -->
+      <div class="pdf-slot" id="slot1">
+        <input type="file" accept=".pdf" onchange="uploadPDF(event, 1)"/>
+        <span class="pdf-icon">📄</span>
+        <div class="pdf-label">
+          <strong id="pdf1-name">Click to upload PDF 1</strong>
+          <small id="pdf1-sub">No file uploaded</small>
+        </div>
+        <button class="pdf-del" id="pdf1-del" style="display:none" onclick="deletePDF(1, event)">✕</button>
+      </div>
+
+      <!-- PDF 2 -->
+      <div class="pdf-slot" id="slot2">
+        <input type="file" accept=".pdf" onchange="uploadPDF(event, 2)"/>
+        <span class="pdf-icon">📄</span>
+        <div class="pdf-label">
+          <strong id="pdf2-name">Click to upload PDF 2</strong>
+          <small id="pdf2-sub">No file uploaded</small>
+        </div>
+        <button class="pdf-del" id="pdf2-del" style="display:none" onclick="deletePDF(2, event)">✕</button>
+      </div>
+
+    </div>
+    <p class="sub" style="margin-top:10px">PDFs are sent after the text message. Both are optional.</p>
+  </div>
+
+  <!-- Stats Card -->
+  <div class="card">
+    <div class="card-title"><span>📊</span> Live Stats</div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-num" id="stat-recv">0</div>
+        <div class="stat-lbl">Received</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" id="stat-repl">0</div>
+        <div class="stat-lbl">Replied</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num danger" id="stat-fail">0</div>
+        <div class="stat-lbl">Failed</div>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn btn-gray btn-sm" onclick="clearLogs()">🗑 Clear Logs &amp; Stats</button>
+    </div>
+  </div>
+
+  <!-- Message Log — full width -->
+  <div class="card full">
+    <div class="card-title"><span>📋</span> Message Log (latest 100)</div>
+    <div class="log-wrap">
+      <table id="log-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>From</th>
+            <th>Message</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="log-body">
+          <tr><td colspan="4"><div id="empty-log">No messages yet. Waiting…</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /grid -->
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────
+//  Socket.io – real-time state updates
+// ─────────────────────────────────────────────
+const socket = io();
+
+socket.on('state', applyState);
+
+function applyState(s) {
+  // Status pill
+  const pill = document.getElementById('status-pill');
+  const txt  = document.getElementById('status-txt');
+  pill.className = s.status;
+
+  const labels = {
+    disconnected:  'Disconnected',
+    qr:            'Scan QR Code',
+    authenticated: 'Authenticated…',
+    connected:     'Connected ✓',
+    error:          'Connection error',
+    starting:       'Starting…'
+  };
+  txt.textContent = labels[s.status] || s.status;
+
+  // QR
+  const qrImg = document.getElementById('qr-img');
+  const qrMsg = document.getElementById('qr-msg');
+  const logoutRow = document.getElementById('logout-row');
+
+  if (s.status === 'qr' && s.qrDataUrl) {
+    qrImg.src = s.qrDataUrl;
+    qrImg.style.display = 'block';
+    qrMsg.innerHTML = `<strong>Scan with WhatsApp</strong>Open WhatsApp → ⋮ Menu → Linked Devices → Link a Device`;
+    logoutRow.style.display = 'none';
+  } else if (s.status === 'connected') {
+    qrImg.style.display = 'none';
+    qrMsg.innerHTML = `<div style="font-size:52px">✅</div><strong style="font-size:1.1rem">WhatsApp Connected!</strong>Your bot is live and listening for messages.`;
+    logoutRow.style.display = 'flex';
+  } else if (s.status === 'authenticated') {
+    qrImg.style.display = 'none';
+    qrMsg.innerHTML = `<div style="font-size:52px">⏳</div><strong>Authenticated</strong>Loading WhatsApp…`;
+    logoutRow.style.display = 'none';
+  } else if (s.status === 'error') {
+    qrImg.style.display = 'none';
+    qrMsg.innerHTML = `<div style="font-size:52px">⚠️</div><strong>WhatsApp connection error</strong>Restart the bot. If it continues, log out and scan a new QR code.`;
+    logoutRow.style.display = 'none';
+  } else {
+    qrImg.style.display = 'none';
+    qrMsg.innerHTML = `<div style="font-size:52px">⏳</div><strong>Starting…</strong>Initialising WhatsApp client.`;
+    logoutRow.style.display = 'none';
+  }
+
+  // Reply text (only update if textarea not focused)
+  const ta = document.getElementById('reply-text');
+  if (document.activeElement !== ta) ta.value = s.replyText;
+
+  // PDFs
+  updatePDFSlot(1, s.pdf1Name);
+  updatePDFSlot(2, s.pdf2Name);
+
+  // Stats
+  document.getElementById('stat-recv').textContent = s.stats.received;
+  document.getElementById('stat-repl').textContent = s.stats.replied;
+  document.getElementById('stat-fail').textContent = s.stats.failed;
+
+  // Log
+  renderLog(s.logs);
+}
+
+function updatePDFSlot(n, name) {
+  const nameEl = document.getElementById(`pdf${n}-name`);
+  const subEl  = document.getElementById(`pdf${n}-sub`);
+  const delBtn = document.getElementById(`pdf${n}-del`);
+  const slot   = document.getElementById(`slot${n}`);
+
+  if (name) {
+    nameEl.textContent = name;
+    subEl.textContent  = 'Uploaded ✓';
+    delBtn.style.display = 'block';
+    slot.classList.add('has-file');
+  } else {
+    nameEl.textContent = `Click to upload PDF ${n}`;
+    subEl.textContent  = 'No file uploaded';
+    delBtn.style.display = 'none';
+    slot.classList.remove('has-file');
+  }
+}
+
+function renderLog(logs) {
+  const tbody = document.getElementById('log-body');
+  if (!logs || logs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4"><div id="empty-log">No messages yet. Waiting…</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = logs.map(l => {
+    let badge;
+    if (l.error)       badge = `<span class="badge badge-fail" title="${escHtml(l.error)}">Failed</span>`;
+    else if (l.replied) badge = `<span class="badge badge-ok">Replied ✓</span>`;
+    else               badge = `<span class="badge badge-wait">Pending…</span>`;
+
+    return `<tr>
+      <td style="white-space:nowrap;color:var(--sub)">${escHtml(l.time)}</td>
+      <td style="white-space:nowrap">+${escHtml(l.from)}</td>
+      <td style="max-width:300px;word-break:break-word">${escHtml(l.body)}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─────────────────────────────────────────────
+//  Actions
+// ─────────────────────────────────────────────
+async function saveText() {
+  const text = document.getElementById('reply-text').value.trim();
+  if (!text) return showToast('Message cannot be empty', 'err');
+  try {
+    const r = await fetch('/api/reply-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!r.ok) throw new Error();
+    showToast('Message saved ✓', 'ok');
+  } catch { showToast('Failed to save message', 'err'); }
+}
+
+async function uploadPDF(evt, slot) {
+  const file = evt.target.files[0];
+  if (!file) return;
+
+  const fd = new FormData();
+  fd.append(`pdf${slot}`, file);
+
+  try {
+    showToast(`Uploading PDF ${slot}…`);
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error();
+    showToast(`PDF ${slot} uploaded ✓`, 'ok');
+  } catch { showToast(`Failed to upload PDF ${slot}`, 'err'); }
+
+  evt.target.value = '';  // reset so same file can be re-selected
+}
+
+async function deletePDF(slot, evt) {
+  evt.stopPropagation();   // don't trigger file input
+  evt.preventDefault();
+  try {
+    const r = await fetch(`/api/pdf/${slot}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error();
+    showToast(`PDF ${slot} removed`, 'ok');
+  } catch { showToast('Failed to remove PDF', 'err'); }
+}
+
+async function clearLogs() {
+  if (!confirm('Clear all logs and reset stats?')) return;
+  try {
+    const r = await fetch('/api/clear-logs', { method: 'POST' });
+    if (!r.ok) throw new Error();
+    showToast('Logs cleared', 'ok');
+  } catch { showToast('Failed to clear logs', 'err'); }
+}
+
+async function logout() {
+  if (!confirm('Logout from WhatsApp? You will need to scan QR again.')) return;
+  try {
+    const r = await fetch('/api/logout', { method: 'POST' });
+    if (!r.ok) throw new Error();
+    showToast('Logged out', 'ok');
+  } catch { showToast('Failed to logout', 'err'); }
+}
+
+// ─────────────────────────────────────────────
+//  Toast
+// ─────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 2800);
+}
+</script>
+</body>
+</html>

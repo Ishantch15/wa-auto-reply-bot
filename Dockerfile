@@ -11,6 +11,9 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY package.json package-lock.json ./
+# npm runs the project's postinstall script, so it must be available before
+# dependencies are installed.
+COPY scripts ./scripts
 RUN npm ci --omit=dev
 COPY . .
 
